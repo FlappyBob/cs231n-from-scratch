@@ -37,31 +37,32 @@ class SinusoidalPosEmb(nn.Module):
         return emb
     
 class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-8):
+    """RMSNorm for 2D feature maps (B, C, H, W)"""
+    def __init__(self, dim):
         super().__init__()
-        self.dim = dim
-        self.scale = nn.Parameter(torch.ones(1, dim, 1, 1)) * (dim ** 0.5) 
-        
+        self.scale = dim ** 0.5  # 常数，恢复数值范围
+        self.g = nn.Parameter(torch.ones(1, dim, 1, 1))  # 可学习的缩放参数
+
     def forward(self, x):
-        norm_x = F.normalize(x, dim=1)
-        return norm_x * self.scale        
+        # F.normalize在dim=1做L2归一化，乘以g和scale恢复范围
+        return F.normalize(x, dim=1) * self.g * self.scale        
     
 class Block(nn.Module):
+    """带feature modulation的卷积块"""
     def __init__(self, dim_in, dim_out):
         super().__init__()
-        
-        self.norm = RMSNorm(dim_in)
         self.proj = nn.Conv2d(dim_in, dim_out, 3, padding=1)
+        self.norm = RMSNorm(dim_out)  # norm在conv之后，所以用dim_out
         self.act = nn.GELU()
-        
-    def forward(self, x , scale_shift=None):
+
+    def forward(self, x, scale_shift=None):
         x = self.proj(x)
         x = self.norm(x)
-        
-        if (exists(scale_shift)):
+
+        if exists(scale_shift):
             scale, shift = scale_shift
             x = x * (scale + 1) + shift
-    
+
         x = self.act(x)
         return x
     
